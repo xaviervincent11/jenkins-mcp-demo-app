@@ -23,6 +23,16 @@ spec:
           env:
             - name: APP_VERSION
               value: "{{ .Values.image.tag }}"
+            - name: JENKINS_BUILD_NUMBER
+              value: "{{ .Values.image.tag }}"
+            - name: HELM_REVISION
+              value: "{{ .Release.Revision }}"
+            - name: HELM_HISTORY_VERSION
+              value: "{{ .Release.Revision }}"
+            - name: HELM_CHART_VERSION
+              value: "{{ .Chart.Version }}"
+            - name: HELM_CHART_APP_VERSION
+              value: "{{ .Chart.AppVersion }}"
           readinessProbe:
             httpGet:
               path: /health

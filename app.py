@@ -122,6 +122,36 @@ PAGE = """<!doctype html>
 
     .version strong { color: #70f4ce; }
 
+    .metadata {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+      gap: .75rem;
+      margin-top: 1.25rem;
+    }
+
+    .metadata-item {
+      min-width: 0;
+      padding: 1rem;
+      border: 1px solid #ffffff1c;
+      border-radius: 1rem;
+      background: #ffffff08;
+    }
+
+    .metadata-item span {
+      display: block;
+      margin-bottom: .5rem;
+      color: #9da7c5;
+      font-size: .72rem;
+      line-height: 1.4;
+    }
+
+    .metadata-item strong {
+      display: block;
+      overflow-wrap: anywhere;
+      color: #e7e9f7;
+      font-size: 1rem;
+    }
+
     footer {
       margin-top: 2.5rem;
       color: #7f89a8;
@@ -165,6 +195,28 @@ PAGE = """<!doctype html>
       <span aria-hidden="true">✦</span>
       Deployed version <strong>{{ version }}</strong>
     </div>
+    <section class="metadata" aria-label="Deployment metadata">
+      <div class="metadata-item">
+        <span>Jenkins build number</span>
+        <strong>{{ build_number }}</strong>
+      </div>
+      <div class="metadata-item">
+        <span>Helm revision</span>
+        <strong>{{ helm_revision }}</strong>
+      </div>
+      <div class="metadata-item">
+        <span>Helm history version</span>
+        <strong>{{ helm_history_version }}</strong>
+      </div>
+      <div class="metadata-item">
+        <span>Helm chart version</span>
+        <strong>{{ chart_version }}</strong>
+      </div>
+      <div class="metadata-item">
+        <span>Helm chart appVersion</span>
+        <strong>{{ chart_app_version }}</strong>
+      </div>
+    </section>
     <footer>BUILT WITH FLASK · SHIPPED WITH HELM</footer>
   </main>
 </body>
@@ -173,7 +225,15 @@ PAGE = """<!doctype html>
 
 @app.route("/")
 def hello():
-    return render_template_string(PAGE, version=os.getenv("APP_VERSION", "dev"))
+    return render_template_string(
+        PAGE,
+        version=os.getenv("APP_VERSION", "dev"),
+        build_number=os.getenv("JENKINS_BUILD_NUMBER", "local"),
+        helm_revision=os.getenv("HELM_REVISION", "local"),
+        helm_history_version=os.getenv("HELM_HISTORY_VERSION", "local"),
+        chart_version=os.getenv("HELM_CHART_VERSION", "local"),
+        chart_app_version=os.getenv("HELM_CHART_APP_VERSION", "local"),
+    )
 
 @app.route("/health")
 def health():
