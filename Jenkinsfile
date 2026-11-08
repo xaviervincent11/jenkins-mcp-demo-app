@@ -1,59 +1,107 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      defaultContainer 'helm'
+      yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: demo-app-deployer
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      command:
+        - /busybox/cat
+      tty: true
+    - name: helm
+      image: alpine/helm:3.17.3
+      command:
+        - /bin/sh
+        - -c
+        - cat
+      tty: true
+    - name: curl
+      image: curlimages/curl:8.12.1
+      command:
+        - /bin/sh
+        - -c
+        - sleep 3600
+      tty: true
+'''
+    }
+  }
+
+  options {
+    skipDefaultCheckout(true)
+  }
 
   environment {
     IMAGE_NAME = 'demo-app'
-    IMAGE_TAG  = "${env.BUILD_NUMBER}"
-    RELEASE    = 'demo'
-    NAMESPACE  = 'demo'
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    PUSH_REGISTRY = 'registry.kube-system.svc.cluster.local:80'
+    IMAGE_REPOSITORY = 'localhost:5000/demo-app'
+    RELEASE = 'demo'
+    NAMESPACE = 'demo'
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Build image') {
       steps {
-        sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
+        checkout scm
       }
     }
 
-    stage('Load into minikube') {
+    stage('Build and publish image') {
       steps {
-        sh 'minikube image load ${IMAGE_NAME}:${IMAGE_TAG}'
+        container('kaniko') {
+          sh '''
+            /kaniko/executor \
+              --context="dir://${WORKSPACE}" \
+              --dockerfile="${WORKSPACE}/Dockerfile" \
+              --destination="${PUSH_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+              --insecure
+          '''
+        }
       }
     }
 
     stage('Helm lint') {
       steps {
-        sh 'helm lint chart/demo-app'
+        container('helm') {
+          sh 'helm lint chart/demo-app'
+        }
       }
     }
 
     stage('Deploy') {
       steps {
-        sh '''
-          helm upgrade --install ${RELEASE} chart/demo-app \
-            --namespace ${NAMESPACE} --create-namespace \
-            --set image.repository=${IMAGE_NAME} \
-            --set image.tag=${IMAGE_TAG} \
-            --wait --timeout 90s
-        '''
+        container('helm') {
+          sh '''
+            helm upgrade --install "${RELEASE}" chart/demo-app \
+              --namespace "${NAMESPACE}" \
+              --set-string image.repository="${IMAGE_REPOSITORY}" \
+              --set-string image.tag="${IMAGE_TAG}" \
+              --wait --timeout 120s
+          '''
+        }
       }
     }
 
     stage('Smoke test') {
       steps {
-        sh 'kubectl -n ${NAMESPACE} rollout status deploy/${RELEASE} --timeout=60s'
+        container('curl') {
+          sh 'curl --fail --retry 5 --retry-connrefused --retry-delay 2 --max-time 10 http://demo.demo.svc.cluster.local/health'
+        }
       }
     }
   }
 
   post {
     failure {
-      sh 'kubectl -n ${NAMESPACE} get pods || true'
-      sh 'kubectl -n ${NAMESPACE} describe deploy/${RELEASE} || true'
+      container('helm') {
+        sh 'helm status "${RELEASE}" --namespace "${NAMESPACE}" --show-resources || true'
+        sh 'helm get all "${RELEASE}" --namespace "${NAMESPACE}" || true'
+      }
     }
   }
 }
