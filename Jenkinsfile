@@ -20,13 +20,6 @@ spec:
         - -c
         - cat
       tty: true
-    - name: curl
-      image: curlimages/curl:8.12.1
-      command:
-        - /bin/sh
-        - -c
-        - sleep 3600
-      tty: true
 '''
     }
   }
@@ -89,8 +82,11 @@ spec:
 
     stage('Smoke test') {
       steps {
-        container('curl') {
-          sh 'curl --fail --retry 5 --retry-connrefused --retry-delay 2 --max-time 10 http://demo.demo.svc.cluster.local/health'
+        container('helm') {
+          sh '''
+            response="$(wget -qO- -T 10 -t 5 "http://${RELEASE}.${NAMESPACE}.svc.cluster.local/health")"
+            [ "$response" = "ok" ]
+          '''
         }
       }
     }
