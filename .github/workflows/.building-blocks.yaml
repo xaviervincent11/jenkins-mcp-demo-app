@@ -1,0 +1,10 @@
+name: building-blocks
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Building blocks, stage 1, step 1"
+      - uses: actions/checkout@v3
