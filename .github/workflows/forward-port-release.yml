@@ -1,0 +1,83 @@
+name: Forward-port release PRs
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  forward-port:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.base.ref, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open forward-port pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+
+          mapfile -t release_branches < <(
+            gh api --paginate "repos/${REPOSITORY}/branches?per_page=100" --jq '.[].name' \
+              | grep -E '^release/' \
+              | sort -V
+          )
+
+          found_source=false
+          targets=()
+          for branch in "${release_branches[@]}"; do
+            if [[ "$branch" == "$SOURCE_BRANCH" ]]; then
+              found_source=true
+              continue
+            fi
+            if [[ "$found_source" == true ]]; then
+              targets+=("$branch")
+            fi
+          done
+
+          if [[ "$found_source" != true ]]; then
+            echo "::error::Source branch ${SOURCE_BRANCH} was not found among release branches"
+            exit 1
+          fi
+
+          targets+=(main)
+
+          for target in "${targets[@]}"; do
+            ahead_count="$(git rev-list --count "origin/${target}..origin/${SOURCE_BRANCH}")"
+            if [[ "$ahead_count" == "0" ]]; then
+              echo "No commits to forward from ${SOURCE_BRANCH} to ${target}; skipping"
+              continue
+            fi
+
+            open_pr_count="$(
+              gh pr list \
+                --repo "$REPOSITORY" \
+                --head "$SOURCE_BRANCH" \
+                --base "$target" \
+                --state open \
+                --json number \
+                --jq 'length'
+            )"
+            if [[ "$open_pr_count" != "0" ]]; then
+              echo "Forward-port PR from ${SOURCE_BRANCH} to ${target} is already open"
+              continue
+            fi
+
+            gh pr create \
+              --repo "$REPOSITORY" \
+              --head "$SOURCE_BRANCH" \
+              --base "$target" \
+              --title "Forward-port ${SOURCE_BRANCH} to ${target}" \
+              --body "This PR propagates changes merged into \`${SOURCE_BRANCH}\` forward to \`${target}\`. Merge it to continue the forward-port chain."
+          done
