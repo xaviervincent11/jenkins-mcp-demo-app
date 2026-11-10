@@ -8,8 +8,3 @@ jobs:
     steps:
       - run: echo "Job build, stage 1, step 1"
       - uses: actions/checkout@v3
-  job2_fail:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Job job2_fail, stage 1, step 1"
-      - run: exit 1
